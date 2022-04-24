@@ -5,7 +5,7 @@ import xlsxwriter
 import os
 from pathlib import Path
 
-dictData = {}   # key = filename
+DICTDATA = {}   # key = filename
 
 def processImage(image, filename, displayImages=False):
     ''' Processes an image by counting total pixels, pixels inside/outside kidney,
@@ -18,36 +18,30 @@ def processImage(image, filename, displayImages=False):
         Stores number of total pixels, pixels inside/outside kidney, and pixels on SMA
         in a dictionary. Displays pre- and post-processed images to user if displayImages=True
     '''
-    imgData = []
+    # imgData = [filename, total pxls, pxls outside KD, pxls inside KD, pxls on SMA]
+    imgData = []         
     imgData.append(filename)
-    print(filename)
-
     height, width = image.shape
     total = height * width
-    print("\nTotal pixels:\t\t", total)
     imgData.append(total)
 
     # remove pixels outside of kidney or on blood vessel
     validKidney = cv.inRange(image, 10, 190) # inRange() takes scalar bounds for grayscale image (only 1 channel)
     totalKidneyCount = cv.countNonZero(validKidney) # counts the number of nonzero elements in matrix
     outsideKidney = total - totalKidneyCount
-    print("Pixels outside KD:\t", outsideKidney)
-    print("Pixels inside KD:\t", totalKidneyCount)
     imgData.append(outsideKidney)
     imgData.append(totalKidneyCount)
 
     # count SMA intersections
     threshSMA = cv.inRange(image, 50, 75)
     SMACount = cv.countNonZero(threshSMA)
-    print("Pixels on SMA:\t\t", SMACount)
     imgData.append(SMACount)
 
     # calc percentage in range (SMA intersection pixels / kidney pixels)
     percent = SMACount / totalKidneyCount * 100
-    print("Percentage in range:\t {0:.4}%".format(percent))
-    print("\n")
 
-    dictData[filename] = imgData
+    # store img data in dictionary
+    DICTDATA[filename] = imgData
 
     if displayImages == True:
         cv.imshow("greyscale", image)
@@ -59,21 +53,21 @@ def processImage(image, filename, displayImages=False):
 
 
 def calcAverages():
-    ''' Calculates the average total pixels and average pixels on SMA for a directory of images
-    Parameters: Assumes dictionary contains pixel values for images in the directory
-    Outputs: The average total pixels and average pixels on SMA for images in the directory
+    ''' Calculates the average pixels in KD and average pixels on SMA for all images in a directory
+    Parameters: Assumes dictionary already contains pixel values for all images in the directory
+    Outputs: The average pixels in KD and average pixels on SMA for images in the directory
     '''
-    totPixels = 0
+    totPixelsInKD = 0
     totSMA = 0
-    for i in dictData:
-        totPixels += dictData[i][1]
-        totSMA += dictData[i][4]
-    avgTotPixles = totPixels / len(dictData)
-    avgTotSMA = totSMA / len(dictData)
-    return avgTotPixles, avgTotSMA
+    for i in DICTDATA:
+        totPixelsInKD += DICTDATA[i][3]
+        totSMA += DICTDATA[i][4]
+    avgPxlsInKD = totPixelsInKD / len(DICTDATA)
+    avgTotSMA = totSMA / len(DICTDATA)
+    return avgPxlsInKD, avgTotSMA
 
 
-def writeData(avgTotPixels, avgTotSMA):
+def writeData(avgPxlsInKD, avgTotSMA):
     ''' Writes all results stored in dictionary into excel sheet
     Parameters:
         avgTotPixels: average total pixels for images in directory
@@ -81,22 +75,25 @@ def writeData(avgTotPixels, avgTotSMA):
     Output: 
         Creates new excel sheet and writes the data in it
     '''
-    columns = ["Image", "Total Pixels", "Pixels Outside KD", "Pixels Inside KD", "Pixels on SMA",
-                "Avg Total Pixels", "Avg Pixels on SMA"]
+    columns = ["Filename", "Total Pixels", "Pixels Outside KD", "Pixels Inside KD", "Pixels on SMA",
+                "Avg Pixels in KD", "Avg Pixels on SMA"]
 
-    wb = xlsxwriter.Workbook("example.xlsx")
+    excelName = input("Enter name of excel output (i.e. filename.xlsx, don't include '.xlsx'): ")
+
+    wb = xlsxwriter.Workbook(excelName + ".xlsx")
     worksheet = wb.add_worksheet()
     worksheet.write_row(0, 0, columns)
 
     rowNum = 1
-    for i in dictData:
-        imgData = dictData[i]
+    for i in DICTDATA:
+        imgData = DICTDATA[i]
         worksheet.write_row(rowNum, 0, imgData)
         rowNum += 1
-    worksheet.write(rowNum, 5, avgTotPixels)
+    worksheet.write(rowNum, 5, avgPxlsInKD)
     worksheet.write(rowNum, 6, avgTotSMA)
 
     wb.close()
+    print("Data written to " + excelName + ".xlsx")
     return
 
 
@@ -136,54 +133,51 @@ def testSingleImage(filepath):
     return copy8bit
 
 
+def getFolder():
+    ''' Retrieves absolute path of directory from user
+    Parameters:
+        None
+    Output:
+        Returns absolute path of directory or 'q' if user wants to exit program
+    '''
+    dirPath = input("Absolute path: ")
+    loop = True
+    userQuit = False
+    while loop == True and userQuit == False:
+        isExists = os.path.exists(dirPath)
+        if dirPath == "q":
+            userQuit = True
+        elif isExists == False:
+            print("Error: The filepath does not exist, enter valid path or press q to quit")
+            dirPath = input("Absolute path: ")
+        elif isExists == True:
+            loop = False
+
+    return dirPath
+
 
 def main(): 
 
-    dirPath = "/Users/timothy/Desktop/WeimbsLab/SMALewis/W6.5_10x/testSMA"
-    isExists = os.path.exists(dirPath)
+    dirPath = getFolder()
+    # quit program if user enters q
+    if dirPath == "q":
+        return
+    
     dirList = os.listdir(dirPath)        # list of all files in directory
     dirList = sorted(dirList)            # sort files
+    for imgfile in dirList:              # remove non-image files
+        if imgfile.find(".tif") == -1:
+            dirList.remove(imgfile)
+
     images = loadFromDir(dirPath)       # container with all images from directory
     
     for i in range(len(dirList)):
         processImage(images[i], dirList[i])
 
-    avgTotPixles, avgTotSMA = calcAverages()
-    writeData(avgTotPixles, avgTotSMA)
+    avgPxlsInKD, avgTotSMA = calcAverages()
+    writeData(avgPxlsInKD, avgTotSMA)
    
 
 
 main()
 
-
-'''
-# used for testing individual files
-filePath = "/Users/timothy/Desktop/WeimbsLab/SMALewis/W6.5_10x/testSMA/img_000000002_Default_000.tif"
-displayImages = True
-image8bit = readSingleImage(filePath)
-processImage(image8bit, displayImages)
-'''
-
-
-
-
-'''
-#####################
-# test Guassian Blur
-
-blurredCopy = cv.blur(copy8bit2, (3,3))
-blurRemoveExtreme = cv.inRange(blurredCopy, 10, 190) # inRange() takes scalar bounds for grayscale image (only 1 channel)
-blurTotalKidneyCount = cv.countNonZero(blurRemoveExtreme)   # counts the number of nonzero elements in matrix
-print("\ntotal pixels after removing extremes(pixels that make up kidney): ", blurTotalKidneyCount)
-blurThresh = cv.inRange(blurredCopy, 50, 75)
-blurThreshCount = cv.countNonZero(blurThresh)
-print("pixels in range: ", blurThreshCount)
-blurPercent = blurThreshCount / blurTotalKidneyCount * 100
-print("percentage of in range: {0:.4}%".format(blurPercent))
-
-cv.imshow("blur remove nonkidney", blurRemoveExtreme)
-cv.imshow("blur SMA intersections", blurThresh)
-cv.imshow("blur original image", blurredCopy)
-
-cv.waitKey(0) # press q to exit image
-'''
