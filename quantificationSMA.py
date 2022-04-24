@@ -4,6 +4,7 @@ import math
 import xlsxwriter
 import os
 from pathlib import Path
+import shutil
 
 DICTDATA = {}   # key = filename
 
@@ -93,7 +94,17 @@ def writeData(avgPxlsInKD, avgTotSMA):
     worksheet.write(rowNum, 6, avgTotSMA)
 
     wb.close()
-    print("Data written to " + excelName + ".xlsx")
+    excelFile = excelName +  ".xlsx"
+    print("Data written to", excelFile)
+
+    print("Enter 'q' to output to current directory or enter absolute path of destination (folder must already exist)")
+    outputPath = getFolder()
+    if outputPath != 'q':
+        outputPath = os.path.join(outputPath, excelFile)
+        currPath = os.path.join(os.getcwd(), excelFile)
+        shutil.move(currPath, outputPath)
+
+
     return
 
 
