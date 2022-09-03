@@ -1,5 +1,5 @@
 # SMA Quantification
-Created by Tim Chang for Weimbs Lab at UCSB
+Created for Weimbs Lab at UCSB
 
 ## Description
 
